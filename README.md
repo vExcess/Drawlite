@@ -32,43 +32,57 @@ canvas - the canvas element
 
 ctx - the Drawlite instance's 2d context  
 
-size - sets the size of the canvas  
-@params  
-  (Integer width, Integer height)  
+**size** - sets the size of the canvas  
+```
+@params
+  (Integer width, Integer height)
+```
 
-angleMode - sets the whether to use radians or degrees  
+**angleMode** - sets the whether to use radians or degrees  
+```
 @params  
   (typeof this.RADIANS mode)  
   (typeof this.DEGREES mode)  
+```
 
-frameRate - sets the framerate of the draw loop  
+**frameRate** - sets the framerate of the draw loop  
 @params  
   (Number fps)  
 
-min - returns the minimum of inputted numbers  
+**min** - returns the minimum of inputted numbers  
+```
 @params  
   (Number ...numbers)  
 @return (Number)  
+```
 
-max - returns the maximum of inputted numbers  
+**max** - returns the maximum of inputted numbers  
+```
 @params  
   (Number ...numbers)  
 @return (Number)  
+```
 
-floor - rounds down to the lowest integer  
+**floor** - rounds down to the lowest integer  
+```
 @params  
   (Number n)  
 @return (Integer)  
+```
 
-round - rounds to the closest integer  
+**round** - rounds to the closest integer  
+```
 @params  
   (Number n)  
 @return (Integer)  
+```
 
-sqrt - returns the square root of a number  
+**sqrt** - returns the square root of a number  
+```
 @params  
   (Number n)  
 @return (Number)  
+```
 
 sin
 cos
@@ -103,7 +117,7 @@ seedNoise: seedNoise,
 noise: noise
 
 ## Dynamic Variables
-*These variables are constantly changing. Therefore to access them you must use them from the DrawliteInstance or read them using the `get` object  *
+*These variables are constantly changing. Therefore to access them you must use them from the DrawliteInstance or read them using the `get` object*  
 `frameCount` - (Integer) the number of frames that have been rendered since the program began  
 `FPS` - (Float) the current frames per second the program is running at  
 `pmouseX` - (Integer) the previous x coordinate of the mouse cursor  
