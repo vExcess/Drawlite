@@ -1,5 +1,6 @@
 # Drawlite
-A lightweight yet powerful library for drawing graphics inspired by Processing.js
+A lightweight yet powerful library for drawing graphics inspired by Processing.js  
+**Note: The library is still under development so features are constantly changing and may be unreliable.**
 
 ## Usage
 ```js
@@ -28,9 +29,9 @@ drawlite.draw = function () {
 
 ## Static Variables
 *These variables never change therefore it is safe to use them as local variables without accessing them from the Drawlite instance*  
-canvas - the canvas element  
+**canvas** - the canvas element  
 
-ctx - the Drawlite instance's 2d context  
+**ctx** - the Drawlite instance's 2d context  
 
 **size** - sets the size of the canvas  
 ```
@@ -45,54 +46,100 @@ ctx - the Drawlite instance's 2d context
   (typeof this.DEGREES mode)  
 ```
 
-**frameRate** - sets the framerate of the draw loop  
+**frameRate** - sets the framerate of the draw loop if given an argument. Returns the current frames per second of the draw loop
+```
 @params  
-  (Number fps)  
+  (Number fps)
+@return Number
+```
 
 **min** - returns the minimum of inputted numbers  
 ```
 @params  
   (Number ...numbers)  
-@return (Number)  
+@return Number
 ```
 
 **max** - returns the maximum of inputted numbers  
 ```
 @params  
   (Number ...numbers)  
-@return (Number)  
+@return Number
 ```
 
 **floor** - rounds down to the lowest integer  
 ```
 @params  
   (Number n)  
-@return (Integer)  
+@return Integer
 ```
 
 **round** - rounds to the closest integer  
 ```
 @params  
   (Number n)  
-@return (Integer)  
+@return Integer
 ```
 
 **sqrt** - returns the square root of a number  
 ```
 @params  
   (Number n)  
-@return (Number)  
+@return Number
 ```
 
-sin
-cos
-random
-dist
-color
-fill
-stroke
-strokeWeight
-noStroke
+**sin** - returns the sine of a number. Uses degrees by default, this can be changed using `angleMode`.
+```
+@params
+  (Number n)
+@return Number
+```
+
+**cos** - returns the cosine of a number. Uses degrees by default, this can be changed using `angleMode`.
+```
+@params
+  (Number n)
+@return Number
+```
+
+**random** - returns a random number between \[min, max). Can take either 0, 1, or 2 arguments. If not specific the min is 0 and the max is 1 by default.
+```
+@params
+  (Number max)
+  (Number min, Number max)
+@return Number
+```
+
+**dist** - returns the distance between two 2D points
+```
+@params
+  (Number x1, Number y1, Number x2, Number y2)
+@return Number
+```
+
+**color** - returns an array containing RGB or RGBA values. Each value is a byte between \[0, 255]
+```
+@params
+  (Number n)
+@return [n, n, n]
+
+@params
+  (Number n, Number a)
+@return [n, n, n, a]
+
+@params
+  (Number r, Number g, Number b)
+@return [r, g, b]
+
+@params
+  (Number r, Number g, Number b, Number a)
+@return [r, g, b, a]
+```
+
+**fill**
+**stroke**
+**strokeWeight**
+**noStroke**
 noFill: noFill,
 beginShape: beginShape,
 vertex: vertex,
