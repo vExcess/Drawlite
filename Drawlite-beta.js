@@ -1,9 +1,16 @@
 /**
-    Drawlite.js - a lightweight yet powerful graphics library
-    All code is written by Vexcess except where specified otherwise and is availiable under the MIT License
+    Drawlite.js - a lightweight yet powerful graphics library similiar to Processing and p5
+
+    Perlin Noise functionality is from p5.js (https://github.com/processing/p5.js)
+    All other code written by Vexcess
 **/
-window.Drawlite = function (canvas, callback) {
+var DrawLite = function (canvas, callback) {
     let P = {};
+
+    canvas = canvas ?? {
+        getContext: () => {},
+        addEventListener: () => {}
+    };
     
     // Drawlite CONSTANTS
     let CORNERS = 0,
@@ -30,13 +37,19 @@ window.Drawlite = function (canvas, callback) {
         CURVE_VERTEX_NODE = 4,
         BEZIER_VERTEX_NODE = 5,
         clrToStr = c => (
-            c[3] === undefined ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3]})`
+            c[3] === undefined ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3] / 255})`
         ),
         autoUpdate = false,
         updateDynamics = null,
-        // https://unpkg.com/perlin-noise-3d@0.5.4/dist/perlin-noise-3d.min.js
-        PerlinNoise3d = function(){for(var r=Math.floor(720),n=new Array(r),t=new Array(r),i=Math.PI/180,e=0;e<r;e++)n[e]=Math.sin(e*i*.5),t[e]=Math.cos(e*i*.5);var o=r;o>>=1;var l=function(){this.perlin_octaves=4,this.perlin_amp_falloff=.5,this.perlin=null};return l.prototype={noiseSeed:function(r){var n=function(){var r,n,t=4294967296;return{setSeed:function(i){n=r=(null==i?Math.random()*t:i)>>>0},getSeed:function(){return r},rand:function(){return(n=(1664525*n+1013904223)%t)/t}}}();n.setSeed(r),this.perlin=new Array(4096);for(var t=0;t<4096;t++)this.perlin[t]=n.rand();return this},get:function(n,i,e){if(i=i||0,e=e||0,null==this.perlin){this.perlin=new Array(4096);for(var l=0;l<4096;l++)this.perlin[l]=Math.random()}n<0&&(n=-n),i<0&&(i=-i),e<0&&(e=-e);for(var a,h,s,f,p,u=Math.floor(n),c=Math.floor(i),v=Math.floor(e),d=n-u,M=i-c,_=e-v,m=0,y=.5,w=function(n){return.5*(1-t[Math.floor(n*o)%r])},A=0;A<this.perlin_octaves;A++){var S=u+(c<<4)+(v<<8);a=w(d),h=w(M),s=this.perlin[4095&S],s+=a*(this.perlin[S+1&4095]-s),f=this.perlin[S+16&4095],s+=h*((f+=a*(this.perlin[S+16+1&4095]-f))-s),f=this.perlin[4095&(S+=256)],f+=a*(this.perlin[S+1&4095]-f),p=this.perlin[S+16&4095],f+=h*((p+=a*(this.perlin[S+16+1&4095]-p))-f),m+=(s+=w(_)*(f-s))*y,y*=this.perlin_amp_falloff,u<<=1,c<<=1,v<<=1,(d*=2)>=1&&(u++,d--),(M*=2)>=1&&(c++,M--),(_*=2)>=1&&(v++,_--)}return m}},l}(),
-        pNoise = new PerlinNoise3d();
+        PERLIN_YWRAPB = 4,
+        PERLIN_YWRAP = 1 << PERLIN_YWRAPB,
+        PERLIN_ZWRAPB = 8,
+        PERLIN_ZWRAP = 1 << PERLIN_ZWRAPB,
+        PERLIN_SIZE = 4095,
+        perlin_octaves = 4,
+        perlin_amp_falloff = 0.5,
+        scaled_cosine = i => 0.5 * (1.0 - Math.cos(i * Math.PI)),
+        perlin;
     
     // STATIC VARIABLES
     let ctx = canvas.getContext("2d"),
@@ -50,13 +63,15 @@ window.Drawlite = function (canvas, callback) {
         frameRate = r => {
             clearInterval(updateInterval);
             targetFPS = r;
-            updateInterval = setInterval(mainLoop, 1000 / targetFPS);
+            updateInterval = setInterval(DrawLiteUpdate, 1000 / targetFPS);
         },
         
         min = Math.min,
         max = Math.max,
         floor = Math.floor,
+        abs = Math.abs,
         round = Math.round,
+        constrain = (n, min, max) => (n > max ? max : n < min ? min : n),
         sqrt = Math.sqrt,
         sin = a => {
             if (curAngleMode === DEGREES) return Math.sin(a / 180 * PI);
@@ -78,17 +93,22 @@ window.Drawlite = function (canvas, callback) {
         dist = (a, b, c, d, e, f) => (
             e === undefined ? sqrt((a - c) ** 2 + (b - d) ** 2) : sqrt((a - d) ** 2 + (b - e) ** 2 + (c - f) ** 2)
         ),
+        map = (v, istart, istop, ostart, ostop) => (
+            ostart + (ostop - ostart) * ((v - istart) / (istop - istart))
+        ),
+        radians = d => (d * PI / 180),
+        degrees = r => (r * 180 / PI),
         
         color = (r, g, b, a) => (
             a === undefined ? [r, g, b] : [r, g, b, a]
         ),
         
         fill = (r, g, b, a) => {
-            curFill = color(r, g, b, a);
+            curFill = g === undefined ? color(r, r, r) : (b === undefined ? color(r, r, r, g) : color(r, g, b, a));
         },
         
         stroke = (r, g, b, a) => {
-            curStroke = color(r, g, b, a);
+            curStroke = g === undefined ? color(r, r, r) : (b === undefined ? color(r, r, r, g) : color(r, g, b, a));
         },
         
         strokeWeight = w => {
@@ -158,6 +178,10 @@ window.Drawlite = function (canvas, callback) {
             }
             
         },
+
+        font = (f, sz) => {
+            ctx.font = f + " " + sz + "px";
+        },
         
         text = (t, x, y, w, h) => {
             curFill && (ctx.fillStyle = clrToStr(curFill));
@@ -205,7 +229,6 @@ window.Drawlite = function (canvas, callback) {
                 endShape()
             }
             
-            
             curStroke && ctx.strokeRect(x + 0.5, y + 0.5, w, h);
         },
         
@@ -244,6 +267,7 @@ window.Drawlite = function (canvas, callback) {
         get = {
             width: () => P.width,
             height: () => P.height,
+            frameCount: () => P.frameCount,
             FPS: () => P.FPS,
             pmouseX: () => P.pmouseX,
             pmouseY: () => P.pmouseY,
@@ -260,6 +284,7 @@ window.Drawlite = function (canvas, callback) {
                 updateDynamics = () => {
                     P.get.width = P.width;
                     P.get.height = P.height;
+                    P.get.frameCount = P.frameCount;
                     P.get.FPS = P.FPS;
                     P.get.pmouseX = P.pmouseX;
                     P.get.pmouseY = P.pmouseY;
@@ -274,6 +299,7 @@ window.Drawlite = function (canvas, callback) {
                 updateDynamics = null;
                 P.get.width = () => P.width;
                 P.get.height = () => P.height;
+                P.get.frameCount = () => P.frameCount;
                 P.get.FPS = () => P.FPS;
                 P.get.pmouseX = () => P.pmouseX;
                 P.get.pmouseY = () => P.pmouseY;
@@ -301,71 +327,183 @@ window.Drawlite = function (canvas, callback) {
             ctx.translate(x, y);
         },
 
-        seedNoise = pNoise.noiseSeed,
+        rotate = a => {
+            if (curAngleMode === DEGREES) ctx.rotate(a / 180 * PI);
+            if (curAngleMode === RADIANS) ctx.rotate(a);
+        },
 
-        noise = (x, y, z) => pNoise.get(x, y, z)
+        noise = (x, y = 0, z = 0) => {
+            if (perlin == null) {
+                perlin = new Array(PERLIN_SIZE + 1);
+                for (let i = 0; i < PERLIN_SIZE + 1; i++) {
+                    perlin[i] = Math.random();
+                }
+            }
+        
+            if (x < 0) x = -x;
+            if (y < 0) y = -y;
+            if (z < 0) z = -z;
+        
+            let xi = floor(x),
+                yi = floor(y),
+                zi = floor(z);
+            let xf = x - xi;
+            let yf = y - yi;
+            let zf = z - zi;
+            let rxf, ryf;
+        
+            let r = 0;
+            let ampl = 0.5;
+        
+            let n1, n2, n3;
+        
+            for (let o = 0; o < perlin_octaves; o++) {
+                let of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB);
+        
+                rxf = scaled_cosine(xf);
+                ryf = scaled_cosine(yf);
+        
+                n1 = perlin[of & PERLIN_SIZE];
+                n1 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n1);
+                n2 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
+                n2 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2);
+                n1 += ryf * (n2 - n1);
+        
+                of += PERLIN_ZWRAP;
+                n2 = perlin[of & PERLIN_SIZE];
+                n2 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n2);
+                n3 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
+                n3 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3);
+                n2 += ryf * (n3 - n2);
+        
+                n1 += scaled_cosine(zf) * (n2 - n1);
+        
+                r += n1 * ampl;
+                ampl *= perlin_amp_falloff;
+                xi <<= 1;
+                xf *= 2;
+                yi <<= 1;
+                yf *= 2;
+                zi <<= 1;
+                zf *= 2;
+        
+                if (xf >= 1.0) {
+                    xi++;
+                    xf--;
+                }
+                if (yf >= 1.0) {
+                    yi++;
+                    yf--;
+                }
+                if (zf >= 1.0) {
+                    zi++;
+                    zf--;
+                }
+            }
+            return r;
+        },
+        
+        noiseDetail = (lod, falloff) => {
+            if (lod > 0) perlin_octaves = lod;
+            if (falloff > 0) perlin_amp_falloff = falloff;
+        },
+        
+        seedNoise = (seed) => {
+            const lcg = (() => {
+                const m = 4294967296;
+                const a = 1664525;
+                const c = 1013904223;
+                let seed, z;
+                return {
+                    setSeed(val) {
+                        z = seed = (val == null ? Math.random() * m : val) >>> 0;
+                    },
+                    getSeed() {
+                        return seed;
+                    },
+                    rand() {
+                        z = (a * z + c) % m;
+                        return z / m;
+                    }
+                };
+            })();
+        
+            lcg.setSeed(seed);
+            perlin = new Array(PERLIN_SIZE + 1);
+            for (let i = 0; i < PERLIN_SIZE + 1; i++) {
+                perlin[i] = lcg.rand();
+            }
+        };
         
         
     // Drawlite CONSTANTS
     Object.assign(P, {
-        CORNERS: CORNERS,
-        CENTER: CENTER,
-        RADIUS: RADIUS,
-        DEGREES: DEGREES,
-        RADIANS: RADIANS,
-        PI: PI,
-        TWO_PI: TWO_PI,
-        EPSILON: EPSILON
+        CORNERS,
+        CENTER,
+        RADIUS,
+        DEGREES,
+        RADIANS,
+        PI,
+        TWO_PI,
+        EPSILON
     });
     
     // STATIC VARIABLES
     Object.assign(P, {
-        canvas: canvas,
-        ctx: ctx,
-        size: size,
-        CORNERS: CORNERS,
-        CENTER: CENTER,
-        RADIUS: RADIUS,
-        DEGREES: DEGREES,
-        RADIANS: RADIANS,
-        angleMode: angleMode,
-        frameRate: frameRate,
-        min: min,
-        max: max,
-        floor: floor,
-        round: round,
-        sqrt: sqrt,
-        sin: sin,
-        cos: cos,
-        random: random,
-        dist: dist,
-        color: color,
-        fill: fill,
-        stroke: stroke,
-        strokeWeight: strokeWeight,
-        noStroke: noStroke,
-        noFill: noFill,
-        beginShape: beginShape,
-        vertex: vertex,
-        curveVertex: curveVertex,
-        bezierVertex: bezierVertex,
-        endShape: endShape,
-        snip: snip,
-        image: image,
-        text: text,
-        background: background,
-        rect: rect,
-        triangle: triangle,
-        circle: circle,
-        ellipse: ellipse,
-        get: get,
-        autoUpdateDynamics: autoUpdateDynamics,
-        pushMatrix: pushMatrix,
-        popMatrix: popMatrix,
-        scale: scale,
-        translate: translate,
-        seedNoise: seedNoise,
-        noise: noise
+        canvas,
+        ctx,
+        size,
+        CORNERS,
+        CENTER,
+        RADIUS,
+        DEGREES,
+        RADIANS,
+        angleMode,
+        frameRate,
+        min,
+        max,
+        floor,
+        abs,
+        round,
+        constrain,
+        sqrt,
+        sin,
+        cos,
+        random,
+        dist,
+        map,
+        radians,
+        degrees,
+        color,
+        fill,
+        stroke,
+        strokeWeight,
+        noStroke,
+        noFill,
+        beginShape,
+        vertex,
+        curveVertex,
+        bezierVertex,
+        endShape,
+        snip,
+        image,
+        font,
+        text,
+        background,
+        rect,
+        triangle,
+        circle,
+        ellipse,
+        get,
+        autoUpdateDynamics,
+        pushMatrix,
+        popMatrix,
+        scale,
+        translate,
+        rotate,
+        noise,
+        noiseDetail,
+        seedNoise
     });
         
     // DYNAMIC VARIABLES
@@ -382,7 +520,7 @@ window.Drawlite = function (canvas, callback) {
         height: canvas.height,
     });
 
-    function mainLoop () {
+    function DrawLiteUpdate () {
         if (P.draw) {
             P.draw();
             
@@ -402,7 +540,7 @@ window.Drawlite = function (canvas, callback) {
         }
     }
     
-    updateInterval = setInterval(mainLoop, 1000 / targetFPS);
+    updateInterval = setInterval(DrawLiteUpdate, 1000 / targetFPS);
     
     canvas.addEventListener("mousedown", () => {
         P.mouseIsPressed = true;
@@ -417,17 +555,22 @@ window.Drawlite = function (canvas, callback) {
         P.pmouseY = P.mouseY;
         P.mouseX = e.clientX;
         P.mouseY = e.clientY;
+
+        if (P.mouseMoved) P.mouseMoved(e);
         
         if (P.mouseIsPressed && P.mouseDragged) P.mouseDragged();
     });
-    document.body.addEventListener("keydown", e => {
-        P.keyIsPressed = true;
-        if (P.keyDown) P.keyDown(e);
-    });
-    document.body.addEventListener("keyup", e => {
-        P.keyIsPressed = false;
-        if (P.keyUp) P.keyUp(e);
-    });
+    if (typeof document !== "undefined") {
+        document.body.addEventListener("keydown", e => {
+            e.preventDefault();
+            P.keyIsPressed = true;
+            if (P.keyDown) P.keyDown(e);
+        });
+        document.body.addEventListener("keyup", e => {
+            P.keyIsPressed = false;
+            if (P.keyUp) P.keyUp(e);
+        });
+    }
 
     if (callback) callback(P);
     
