@@ -1,6 +1,7 @@
 # Drawlite
 A lightweight yet powerful library for drawing graphics inspired by Processing.js  
 *Note: The library is still under development so features are constantly changing and may be unreliable.*
+*Note: The documentation for the library is outdated and I don't have time to update it at the moment, but it should work fairly similarily to Processing and you can check out the source code*
 
 ## Usage
 ```js
