@@ -3,8 +3,9 @@
     
     Credits:
         - Perlin Noise functionality is from p5.js (https://github.com/processing/p5.js) and is available under the GNU Lesser General Public License (https://www.gnu.org/licenses/lgpl-3.0.en.html)
+        - This project was heavily influenced by Processing.js (https://github.com/processing-js/processing-js) and small snippets of code were occasionally taken and modified from it
+        - Color.RGBtoHSB and Color.HSBtoRGB algorithms borrowed from https://www.30secondsofcode.org/
         - All other code is written Vexcess and is available under the MIT license (https://opensource.org/license/mit/)
-        - This project was heavily based on Processing.js (https://github.com/processing-js/processing-js) and small snippets of code were occasionally taken and modified from it
 
     Processing.js is nearly 755 KB, outdated, and poorly coded resulted in inefficiency
     p5.js is better than Processing, but it is a whopping 3,695 KB
@@ -14,7 +15,7 @@
     
 **/
 var Drawlite = function (canvas, callback) {
-    let P = {};
+    let D = {};
 
     if (typeof canvas !== "object") throw "Must input a canvas for Drawlite to draw to";
     
@@ -23,7 +24,7 @@ var Drawlite = function (canvas, callback) {
     PI = Math.PI,
     TWO_PI = PI * 2,
     EPSILON = 0.0000000000000001,
-    CORNERS = 0,
+    CORNER = 0,
     LEFT = 1,
     RIGHT = 2,
     TOP = 3,
@@ -65,9 +66,9 @@ var Drawlite = function (canvas, callback) {
         }
         static RGBtoHSB(r, g, b) {
             // https://www.30secondsofcode.org/js/s/rgb-to-hsb
-            r = r / 255 | 0;
-            g = g / 255 | 0;
-            b = b / 255 | 0;
+            r = r / 255;
+            g = g / 255;
+            b = b / 255;
             var v = Math.max(r, g, b),
             n = v - Math.min(r, g, b);
             var h = n === 0 ? 0 : n && v === r ? (g - b) / n : v === g ? 2 + (b - r) / n : 4 + (r - g) / n;
@@ -143,6 +144,44 @@ var Drawlite = function (canvas, callback) {
             return Color.RGBtoHSB(this.r, this.g, this.b);
         }
     }
+
+    class DL_Image {
+        #ctx;
+        constructor(src) {
+            this.width = src.width;
+            this.height = src.height;
+            this.imageData = src;
+            this.sourceImage = document.createElement("canvas");
+
+            this.sourceImage.width = this.width;
+            this.sourceImage.height = this.height;
+            this.#ctx = this.sourceImage.getContext("2d");
+            
+            if (src instanceof Image) {
+                this.#ctx.drawImage(src, 0, 0, this.width, this.height);
+            } else {
+                this.#ctx.putImageData(src, 0, 0);
+            }
+        }
+        updatePixels() {
+            this.#ctx.putImageData(this.imageData, 0, 0);
+        }
+        mask(img) {
+            let pixs = this.imageData.data,
+                imgData = img instanceof DL_Image ? img.imageData : img;
+
+            if (imgData.width === this.width && imgData.height === this.height) {
+                let shapePixs = imgData.data;
+                for (var i = 3, len = pixs.length; i < len; i += 4) {
+                    pixs[i] = shapePixs[i];
+                }
+            } else {
+                throw "mask must have the same dimensions as image.";
+            }
+            
+            this.updatePixels();
+        }
+    }
     
     // MORE LOCAL VARIABLES
     let 
@@ -180,17 +219,18 @@ var Drawlite = function (canvas, callback) {
     perlin_amp_falloff = 0.5,
     scaled_cosine = i => 0.5 * (1.0 - Math.cos(i * Math.PI)),
     perlin,
-    ctxMenuEnabled = false;
+    ctxMenuEnabled = false,
+    curImgMode = CORNER;
         
     // MORE STATIC VARIABLES
     let 
     ctx = canvas.getContext("2d"),
     
     size = (w, h) => {
-        P.width = canvas.width = w;
-        P.height = canvas.height = h;
+        D.width = canvas.width = w;
+        D.height = canvas.height = h;
         font(curFontName, curFontSize);
-        P.imageData = ctx.getImageData(0, 0, P.width, P.height);
+        D.imageData = ctx.getImageData(0, 0, D.width, D.height);
         if (updateDynamics !== null) updateDynamics();
     },
     
@@ -216,7 +256,7 @@ var Drawlite = function (canvas, callback) {
     },
     
     frameRate = r => {
-        if (r === undef) return P.FPS;
+        if (r === undef) return D.FPS;
         targetFPS = r;
         noloop();
         loop();
@@ -277,8 +317,15 @@ var Drawlite = function (canvas, callback) {
     radians = d => d*PI/180,
     
     degrees = r => r*180/PI,
-    
+
     color = (r, g, b, a) => new Color(r, g, b, a),
+
+    lerpColor = (c1, c2, amt) => new Color(
+        lerp(c1.r, c2.r, amt),
+        lerp(c1.g, c2.g, amt),
+        lerp(c1.b, c2.b, amt),
+        lerp(c1.a, c2.a, amt)
+    ),
     
     fill = (r, g, b, a) => {
         curFill = typeof r !== "number" ? r : (g === undef ? color(r, r, r) : (b === undef ? color(r, r, r, g) : color(r, g, b, a)));
@@ -291,6 +338,10 @@ var Drawlite = function (canvas, callback) {
     strokeWeight = w => {
         curStrokeWeight = w;
         ctx.lineWidth = w;
+    },
+
+    strokeCap = w => {
+        ctx.lineCap = w;
     },
     
     noStroke = () => {
@@ -412,8 +463,8 @@ var Drawlite = function (canvas, callback) {
         if (x === undef) {
             x = 0;
             y = 0;
-            w = P.width;
-            h = P.height;
+            w = D.width;
+            h = D.height;
         } else if (w === undef) {
             w = 1;
             h = 1;
@@ -425,29 +476,35 @@ var Drawlite = function (canvas, callback) {
             return new Color(d[0], d[1], d[2], d[3]);
         }
         
-        let snipCanv = document.createElement("canvas");
-        let snipCtx = snipCanv.getContext("2d");
-        snipCanv.width = w;
-        snipCanv.height = h;
-        snipCtx.putImageData(snipImgData, x, y);
-        
-        return {
-            width: w,
-            height: h,
-            sourceImage: snipCanv,
-            imageData: snipImgData,
-            updatePixels: () => {
-                snipCtx.putImageData(snipImgData, x, y);
-            }
-        };
+        return new DL_Image(snipImgData);
+    },
+
+    imageMode = mode => {
+        curImgMode = mode;
     },
     
     image = (img, x, y, w, h) => {
+        if (curImgMode === CENTER) {
+            x -= w / 2;
+            y -= h / 2;
+        }
         if (w === undef) {
             ctx.drawImage(img.sourceImage, x, y);
         } else {
             ctx.drawImage(img.sourceImage, x, y, w, h);
         }
+    },
+
+    loadImage = (src, callback) => {
+        let img = new Image();
+        img.src = src;
+        return new Promise(resolve => {
+            img.onload = function () {
+                let DLImg = new DL_Image(img);
+                if (callback) callback(DLImg);
+                resolve(DLImg);
+            };
+        });
     },
 
     font = (f, sz = curFontSize) => {
@@ -553,10 +610,10 @@ var Drawlite = function (canvas, callback) {
     
     background = (r, g, b, a) => {
         if (a !== undef) {
-            ctx.clearRect(0, 0, P.width, P.height);
+            ctx.clearRect(0, 0, D.width, D.height);
         }
         ctx.fillStyle = color(r, g, b, a).toString();
-        ctx.fillRect(0, 0, P.width, P.height);
+        ctx.fillRect(0, 0, D.width, D.height);
     },
     
     point = (x, y) => {
@@ -695,38 +752,36 @@ var Drawlite = function (canvas, callback) {
         autoUpdate = a === false ? false : true;
         if (autoUpdate) {
             updateDynamics = () => {
-                P.get.width = P.width;
-                P.get.height = P.height;
-                P.get.frameCount = P.frameCount;
-                P.get.FPS = P.FPS;
-                P.get.pmouseX = P.pmouseX;
-                P.get.pmouseY = P.pmouseY;
-                P.get.mouseX = P.mouseX;
-                P.get.mouseY = P.mouseY;
-                P.get.mouseIsPressed = P.mouseIsPressed;
-                P.get.mouseButton = P.mouseButton;
-                P.get.keyIsPressed = P.keyIsPressed;
-                P.get.keyCode = P.keyCode;
-                P.get.imageData = P.imageData;
-                P.get.focused = P.focused;
+                D.get.width = D.width;
+                D.get.height = D.height;
+                D.get.frameCount = D.frameCount;
+                D.get.FPS = D.FPS;
+                D.get.pmouseX = D.pmouseX;
+                D.get.pmouseY = D.pmouseY;
+                D.get.mouseX = D.mouseX;
+                D.get.mouseY = D.mouseY;
+                D.get.mouseIsPressed = D.mouseIsPressed;
+                D.get.mouseButton = D.mouseButton;
+                D.get.keyIsPressed = D.keyIsPressed;
+                D.get.imageData = D.imageData;
+                D.get.focused = D.focused;
             };
             updateDynamics();
         } else {
             updateDynamics = null;
-            P.get.width = () => P.width;
-            P.get.height = () => P.height;
-            P.get.frameCount = () => P.frameCount;
-            P.get.FPS = () => P.FPS;
-            P.get.pmouseX = () => P.pmouseX;
-            P.get.pmouseY = () => P.pmouseY;
-            P.get.mouseX = () => P.mouseX;
-            P.get.mouseY = () => P.mouseY;
-            P.get.mouseIsPressed = () => P.mouseIsPressed;
-            P.get.mouseButton = () => P.mouseButton;
-            P.get.keyIsPressed = () => P.keyIsPressed;
-            P.get.keyCode = () => P.keyCode;
-            P.get.imageData = () => P.imageData;
-            P.get.focused = () => P.focused;
+            D.get.width = () => D.width;
+            D.get.height = () => D.height;
+            D.get.frameCount = () => D.frameCount;
+            D.get.FPS = () => D.FPS;
+            D.get.pmouseX = () => D.pmouseX;
+            D.get.pmouseY = () => D.pmouseY;
+            D.get.mouseX = () => D.mouseX;
+            D.get.mouseY = () => D.mouseY;
+            D.get.mouseIsPressed = () => D.mouseIsPressed;
+            D.get.mouseButton = () => D.mouseButton;
+            D.get.keyIsPressed = () => D.keyIsPressed;
+            D.get.imageData = () => D.imageData;
+            D.get.focused = () => D.focused;
         }
     },
     
@@ -860,11 +915,11 @@ var Drawlite = function (canvas, callback) {
     },
     
     loadPixels = () => {
-        P.imageData.data.set(ctx.getImageData(0, 0, width, height).data);
+        D.imageData.data.set(ctx.getImageData(0, 0, D.width, D.height).data);
     },
     
     updatePixels = () => {
-        ctx.putImageData(P.imageData, 0, 0);
+        ctx.putImageData(D.imageData, 0, 0);
     },
     
     colorMode = m => {
@@ -897,14 +952,21 @@ var Drawlite = function (canvas, callback) {
     nosmooth = () => {
         ctx.imageSmoothingEnabled = false;
         canvas.style.setProperty("image-rendering", "pixelated", "important");
+    },
+
+    createGraphics = (width, height, type) => {
+        let canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        return new Drawlite(canvas);
     };
     
     // Drawlite CONSTANTS
-    Object.assign(P, {
+    Object.assign(D, {
         PI,
         TWO_PI,
         EPSILON,
-        CORNERS,
+        CORNER,
         LEFT,
         RIGHT,
         TOP,
@@ -927,7 +989,7 @@ var Drawlite = function (canvas, callback) {
     });
     
     // STATIC VARIABLES
-    Object.assign(P, {
+    Object.assign(D, {
         canvas,
         Color,
         ctx,
@@ -961,6 +1023,7 @@ var Drawlite = function (canvas, callback) {
         radians,
         degrees,
         color,
+        lerpColor,
         fill,
         stroke,
         strokeWeight,
@@ -973,7 +1036,9 @@ var Drawlite = function (canvas, callback) {
         splineVertex,
         endShape,
         snip,
+        imageMode,
         image,
+        loadImage,
         font,
         textSize,
         textAlign,
@@ -1016,10 +1081,12 @@ var Drawlite = function (canvas, callback) {
         year,
         smooth,
         nosmooth,
+        createGraphics,
+        strokeCap
     });
         
     // DYNAMIC VARIABLES
-    Object.assign(P, {
+    Object.assign(D, {
         frameCount: 0,
         FPS: 0,
         pmouseX: 0,
@@ -1035,21 +1102,29 @@ var Drawlite = function (canvas, callback) {
         imageData: new ImageData(canvas.width, canvas.height)
     });
     
+    D.getProperties = () => {
+        var props = {
+            dynamic: Object.keys(D.get)
+        };
+        props.static = Object.keys(D).filter(p => !props.dynamic.includes(p));
+        return props;
+    };
+    
     enableContextMenu(false);
     autoUpdateDynamics(false);
     font(curFontName, curFontSize);
 
     function DrawliteUpdate () {
-        if (P.draw) {
-            P.draw();
+        if (D.draw) {
+            D.draw();
             
-            P.frameCount++;
+            D.frameCount++;
             FPS_Counter++;
             
             let time = Date.now();
             if (time - lastFPSCheck >= 1000) {
                 lastFPSCheck = time;
-                P.FPS = FPS_Counter;
+                D.FPS = FPS_Counter;
                 FPS_Counter = 0;
             }
             
@@ -1060,44 +1135,60 @@ var Drawlite = function (canvas, callback) {
     drawIntervalId = setInterval(DrawliteUpdate, 1000 / targetFPS);
     
     canvas.addEventListener("focus", () => {
-        P.focused = true;
+        D.focused = true;
     });
     canvas.addEventListener("blur", () => {
-        P.focused = false;
+        D.focused = false;
     });
     
     canvas.addEventListener("mousedown", e => {
-        P.mouseButton = [LEFT, CENTER, RIGHT][e.which - 1];
-        P.mouseIsPressed = true;
-        if (P.mousePressed) P.mousePressed();
+        D.mouseButton = [LEFT, CENTER, RIGHT][e.which - 1];
+        D.mouseIsPressed = true;
+        if (D.mousePressed) D.mousePressed(e);
     });
     canvas.addEventListener("mouseup", e => {
-        P.mouseIsPressed = false;
-        if (P.mouseReleased) P.mouseReleased();
+        D.mouseIsPressed = false;
+        if (D.mouseReleased) D.mouseReleased(e);
     });
     canvas.addEventListener("mousemove", e => {
-        P.pmouseX = P.mouseX;
-        P.pmouseY = P.mouseY;
-        P.mouseX = e.clientX;
-        P.mouseY = e.clientY;
+        D.pmouseX = D.mouseX;
+        D.pmouseY = D.mouseY;
+        D.mouseX = e.clientX;
+        D.mouseY = e.clientY;
 
-        if (P.mouseMoved) P.mouseMoved(e);
-        if (P.mouseIsPressed && P.mouseDragged) P.mouseDragged();
+        if (D.mouseMoved) D.mouseMoved(e);
+        if (D.mouseIsPressed && D.mouseDragged) D.mouseDragged(e);
     });
     
     if (typeof document !== "undefined") {
         document.body.addEventListener("keydown", e => {
             e.preventDefault();
-            P.keyIsPressed = true;
-            if (P.keyPressed) P.keyPressed(e);
+            D.keyIsPressed = true;
+            if (D.keyPressed) D.keyPressed(e);
         });
         document.body.addEventListener("keyup", e => {
-            P.keyIsPressed = false;
-            if (P.keyReleased) P.keyReleased(e);
+            D.keyIsPressed = false;
+            if (D.keyReleased) D.keyReleased(e);
         });
     }
-
-    if (callback) callback(P);
     
-    return P;
+    var ads = Drawlite.addons;
+    for (let i = 0; i < ads.length; i++) {
+        Object.assign(D, ads[i].static);
+        if (typeof ads[i].methods === "object") {
+            for (let meth in ads[i].methods) {
+                D[meth] = (...args) => {
+                    ads[i].methods[meth](D, ...args);
+                };
+            }
+        }
+    }
+
+    if (callback) callback(D);
+    
+    Drawlite.instances.push(D);
+    
+    return D;
 };
+Drawlite.instances = [];
+Drawlite.addons = [];
