@@ -2,7 +2,8 @@
     drawlite.js - a lightweight yet powerful graphics library based on Processing and p5
     
     Credits:
-        - Perlin Noise functionality is from p5.js (https://github.com/processing/p5.js) and is available under the GNU Lesser General Public License (https://www.gnu.org/licenses/lgpl-3.0.en.html)
+        = PRNG is from https://github.com/davidbau/seedrandom under the MIT license (https://opensource.org/license/mit/)
+        - Perlin Noise functionality is based on p5.js (https://github.com/processing/p5.js) and is available under the GNU Lesser General Public License (https://www.gnu.org/licenses/lgpl-3.0.en.html)
         - This project was heavily influenced by Processing.js (https://github.com/processing-js/processing-js) and small snippets of code were occasionally taken and modified from it
         - Color.RGBtoHSB and Color.HSBtoRGB algorithms from https://www.30secondsofcode.org/
         - All other code is written by Vexcess and is available under the MIT license (https://opensource.org/license/mit/)
@@ -17,7 +18,16 @@
 var Drawlite = function (canvas, callback) {
     let D = {};
 
-    if (typeof canvas !== "object") throw "Must input a canvas for Drawlite to draw to";
+    const dummyCanvas = {
+        width: 1,
+        height: 1,
+        getContext: ()=>({
+            measureText: ()=>({})
+        }),
+        addEventListener: ()=>{}
+    };
+
+    if (typeof canvas !== "object") canvas = dummyCanvas;
     
     // Drawlite CONSTANTS
     const 
@@ -189,6 +199,393 @@ var Drawlite = function (canvas, callback) {
             this.updatePixels();
         }
     }
+
+    let PERLIN_YWRAPB = 4,
+        PERLIN_YWRAP = 1 << PERLIN_YWRAPB,
+        PERLIN_ZWRAPB = 8,
+        PERLIN_ZWRAP = 1 << PERLIN_ZWRAPB,
+        PERLIN_SIZE = 4095,
+        scaled_cosine;
+    {
+        const cos = Math.cos;
+        scaled_cosine = i => 0.5 * (1.0 - cos(i * Math.PI));
+    }
+    class PerlinNoise {
+        #perlin;
+        #perlin_octaves = 4;
+        #perlin_amp_falloff = 0.5;
+        seed;
+        
+        constructor(seed) {
+            this.seed = seed ?? Math.random() << 2048;
+            this.setSeed(this.seed);
+        }
+        
+        setDetail(lod, falloff) {
+            if (lod > 0) this.#perlin_octaves = lod;
+            if (falloff > 0) this.#perlin_amp_falloff = falloff;
+        }
+
+        setSeed(seed) {
+            this.seed = seed;
+
+            const lcg = (() => {
+                const m = 4294967296;
+                const a = 1664525;
+                const c = 1013904223;
+                let seed, z;
+                return {
+                    setSeed(val) {
+                        z = seed = (val == null ? Math.random() * m : val) >>> 0;
+                    },
+                    rand() {
+                        z = (a * z + c) % m;
+                        return z / m;
+                    }
+                };
+            })();
+        
+            lcg.setSeed(seed);
+            this.#perlin = new Array(PERLIN_SIZE + 1);
+            for (let i = 0; i < PERLIN_SIZE + 1; i++) {
+                this.#perlin[i] = lcg.rand();
+            }
+        }
+
+        get(x, y = 0, z = 0) {        
+            if (x < 0) x = -x;
+            if (y < 0) y = -y;
+            if (z < 0) z = -z;
+        
+            let xi = floor(x),
+                yi = floor(y),
+                zi = floor(z);
+            let xf = x - xi;
+            let yf = y - yi;
+            let zf = z - zi;
+            let rxf, ryf;
+        
+            let r = 0;
+            let ampl = 0.5;
+        
+            let n1, n2, n3;
+
+            let perlin = this.#perlin,
+                perlin_octaves = this.#perlin_octaves,
+                perlin_amp_falloff = this.#perlin_amp_falloff;
+            for (let o = 0; o < perlin_octaves; o++) {
+                let of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB);
+        
+                rxf = scaled_cosine(xf);
+                ryf = scaled_cosine(yf);
+        
+                n1 = perlin[of & PERLIN_SIZE];
+                n1 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n1);
+                n2 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
+                n2 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2);
+                n1 += ryf * (n2 - n1);
+        
+                of += PERLIN_ZWRAP;
+                n2 = perlin[of & PERLIN_SIZE];
+                n2 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n2);
+                n3 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
+                n3 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3);
+                n2 += ryf * (n3 - n2);
+        
+                n1 += scaled_cosine(zf) * (n2 - n1);
+        
+                r += n1 * ampl;
+                ampl *= perlin_amp_falloff;
+                xi <<= 1;
+                xf *= 2;
+                yi <<= 1;
+                yf *= 2;
+                zi <<= 1;
+                zf *= 2;
+        
+                if (xf >= 1.0) {
+                    xi++;
+                    xf--;
+                }
+                if (yf >= 1.0) {
+                    yi++;
+                    yf--;
+                }
+                if (zf >= 1.0) {
+                    zi++;
+                    zf--;
+                }
+            }
+            return r;
+        }
+    }
+
+    /*
+        Copyright 2019 David Bau.
+        
+        Permission is hereby granted, free of charge, to any person obtaining
+        a copy of this software and associated documentation files (the
+        "Software"), to deal in the Software without restriction, including
+        without limitation the rights to use, copy, modify, merge, publish,
+        distribute, sublicense, and/or sell copies of the Software, and to
+        permit persons to whom the Software is furnished to do so, subject to
+        the following conditions:
+        
+        The above copyright notice and this permission notice shall be
+        included in all copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+        EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+        MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+        IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+        CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+        TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+        SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    */
+    const PRNG = (function(global, pool) {
+        var width = 256, // each RC4 output is 0 <= x < 256
+            chunks = 6, // at least six RC4 outputs for each double
+            digits = 52, // there are 52 significant digits in a double
+            rngname = 'random', // rngname: name for Math.random and Math.seedrandom
+            startdenom = Math.pow(width, chunks),
+            significance = Math.pow(2, digits),
+            overflow = significance * 2,
+            mask = width - 1,
+            nodecrypto; // node.js crypto module, initialized at the bottom.
+    
+        function seedrandom(seed, options, callback) {
+            var key = [];
+            options = (options == true) ? {
+                entropy: true
+            } : (options || {});
+    
+            var shortseed = mixkey(flatten(
+                options.entropy ? [seed, tostring(pool)] :
+                (seed == null) ? autoseed() : seed, 3), key);
+    
+            var arc4 = new ARC4(key);
+    
+            var prng = function() {
+                var n = arc4.g(chunks), // Start with a numerator n < 2 ^ 48
+                    d = startdenom, //   and denominator d = 2 ^ 48.
+                    x = 0; //   and no 'extra last byte'.
+                while (n < significance) { // Fill up all significant digits by
+                    n = (n + x) * width; //   shifting numerator and
+                    d *= width; //   denominator and generating a
+                    x = arc4.g(1); //   new least-significant-byte.
+                }
+                while (n >= overflow) { // To avoid rounding up, before adding
+                    n /= 2; //   last byte, shift everything
+                    d /= 2; //   right using integer math until
+                    x >>>= 1; //   we have exactly the desired bits.
+                }
+                return (n + x) / d; // Form the number within [0, 1).
+            };
+    
+            prng.int32 = function() {
+                return arc4.g(4) | 0;
+            }
+            prng.quick = function() {
+                return arc4.g(4) / 0x100000000;
+            }
+            prng.double = prng;
+    
+            // Mix the randomness into accumulated entropy.
+            mixkey(tostring(arc4.S), pool);
+    
+            // Calling convention: what to return as a function of prng, seed, is_math.
+            return (options.pass || callback || prng);
+        }
+        
+        function ARC4(key) {
+            var t, keylen = key.length,
+                me = this,
+                i = 0,
+                j = me.i = me.j = 0,
+                s = me.S = [];
+    
+            if (!keylen) {
+                key = [keylen++];
+            }
+    
+            while (i < width) {
+                s[i] = i++;
+            }
+            for (i = 0; i < width; i++) {
+                s[i] = s[j = mask & (j + key[i % keylen] + (t = s[i]))];
+                s[j] = t;
+            }
+    
+            (me.g = function(count) {
+                var t, r = 0,
+                    i = me.i,
+                    j = me.j,
+                    s = me.S;
+                while (count--) {
+                    t = s[i = mask & (i + 1)];
+                    r = r * width + s[mask & ((s[i] = s[j = mask & (j + t)]) + (s[j] = t))];
+                }
+                me.i = i;
+                me.j = j;
+                return r;
+            })(width);
+        }
+    
+        function copy(f, t) {
+            t.i = f.i;
+            t.j = f.j;
+            t.S = f.S.slice();
+            return t;
+        };
+    
+        function flatten(obj, depth) {
+            var result = [],
+                typ = (typeof obj),
+                prop;
+            if (depth && typ == 'object') {
+                for (prop in obj) {
+                    try {
+                        result.push(flatten(obj[prop], depth - 1));
+                    } catch (e) {}
+                }
+            }
+            return (result.length ? result : typ == 'string' ? obj : obj + '\0');
+        }
+    
+        function mixkey(seed, key) {
+            var stringseed = seed + '',
+                smear, j = 0;
+            while (j < stringseed.length) {
+                key[mask & j] =
+                    mask & ((smear ^= key[mask & j] * 19) + stringseed.charCodeAt(j++));
+            }
+            return tostring(key);
+        }
+        
+        function autoseed() {
+            try {
+                var out;
+                if (nodecrypto && (out = nodecrypto.randomBytes)) {
+                    // The use of 'out' to remember randomBytes makes tight minified code.
+                    out = out(width);
+                } else {
+                    out = new Uint8Array(width);
+                    (global.crypto || global.msCrypto).getRandomValues(out);
+                }
+                return tostring(out);
+            } catch (e) {
+                var browser = global.navigator,
+                    plugins = browser && browser.plugins;
+                return [+new Date, global, plugins, global.screen, tostring(pool)];
+            }
+        }
+    
+        function tostring(a) {
+            return String.fromCharCode.apply(0, a);
+        }
+    
+        mixkey(Math.random(), pool);
+    
+        return seedrandom;
+    })(
+        // global: `self` in browsers (including strict mode and web workers),
+        // otherwise `this` in Node and other environments
+        (typeof self !== 'undefined') ? self : this,
+        [], // pool: entropy pool starts empty
+    );
+
+    // vec3
+    let vec3;
+    {
+        const sqrt = Math.sqrt; // caching for faster lookup
+        vec3 = function(x, y, z) {
+            return {
+                x: x,
+                y: y,
+                z: z ?? 0
+            };
+        };
+        vec3.fromArr = arr => ({
+            x: arr[0],
+            y: arr[1],
+            z: arr[2]
+        });
+        vec3.toArr = v => ([v.x, v.y, v.z]);
+        vec3.clone = v => ({
+            x: v.x,
+            y: v.y,
+            z: v.z
+        });
+        vec3.add = (v1, v2) => {
+            return typeof v2 === 'number' ? {
+                x: v1.x + v2,
+                y: v1.y + v2,
+                z: v1.z + v2
+            } : {
+                x: v1.x + v2.x,
+                y: v1.y + v2.y,
+                z: v1.z + v2.z
+            };
+        };
+        vec3.sub = (v1, v2) => {
+            return typeof v2 === 'number' ? {
+                x: v1.x - v2,
+                y: v1.y - v2,
+                z: v1.z - v2
+            } : {
+                x: v1.x - v2.x,
+                y: v1.y - v2.y,
+                z: v1.z - v2.z
+            };
+        };
+        vec3.mul = (v1, v2) => {
+            return typeof v2 === 'number' ? {
+                x: v1.x * v2,
+                y: v1.y * v2,
+                z: v1.z * v2
+            } : {
+                x: v1.x * v2.x,
+                y: v1.y * v2.y,
+                z: v1.z * v2.z
+            };
+        };
+        vec3.div = (v1, v2) => {
+            return typeof v2 === 'number' ? {
+                x: v1.x / v2,
+                y: v1.y / v2,
+                z: v1.z / v2
+            } : {
+                x: v1.x / v2.x,
+                y: v1.y / v2.y,
+                z: v1.z / v2.z
+            };
+        };
+        vec3.neg = v => ({
+            x: -v.x,
+            y: -v.y,
+            z: -v.z
+        });
+        vec3.mag = v1 => {
+            // benchmarks show that caching the values results in a 0.000008% performance boost
+            let x = v1.x, y = v1.y, z = v1.z;
+            return sqrt(x * x + y * y + z * z);
+        };
+        vec3.normalize = v1 => {
+            let x = v1.x, y = v1.y, z = v1.z;
+            let m = sqrt(x * x + y * y + z * z);
+            return m > 0 ? {
+                x: v1.x / m,
+                y: v1.y / m,
+                z: v1.z / m
+            } : v1;
+        };
+        vec3.dot = (v1, v2) => (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z);
+        vec3.cross = (v1, v2) => ({
+            x: v1.y * v2.z - v1.z * v2.y,
+            y: v1.z * v2.x - v1.x * v2.z,
+            z: v1.x * v2.y - v1.y * v2.x
+        });
+    }
     
     // MORE LOCAL VARIABLES
     let 
@@ -218,15 +615,7 @@ var Drawlite = function (canvas, callback) {
     SPLINE_VERTEX_NODE = 6,
     autoUpdate = false,
     updateDynamics = null,
-    PERLIN_YWRAPB = 4,
-    PERLIN_YWRAP = 1 << PERLIN_YWRAPB,
-    PERLIN_ZWRAPB = 8,
-    PERLIN_ZWRAP = 1 << PERLIN_ZWRAPB,
-    PERLIN_SIZE = 4095,
-    perlin_octaves = 4,
-    perlin_amp_falloff = 0.5,
-    scaled_cosine = i => 0.5 * (1.0 - Math.cos(i * Math.PI)),
-    perlin,
+    
     ctxMenuEnabled = false,
     curImgMode = CORNER,
     _splineTightness = 0,
@@ -282,7 +671,7 @@ var Drawlite = function (canvas, callback) {
         curAngleMode = m;
     },
     
-    noloop = () => {
+    noLoop = () => {
         clearInterval(drawIntervalId);
         cancelAnimationFrame(drawIntervalId);
     },
@@ -302,7 +691,7 @@ var Drawlite = function (canvas, callback) {
     frameRate = r => {
         if (r === undef) return D.FPS;
         targetFPS = r;
-        noloop();
+        noLoop();
         loop();
     },
     
@@ -1001,110 +1390,7 @@ var Drawlite = function (canvas, callback) {
     rotate = a => {
         if (curAngleMode === DEGREES) ctx.rotate(a*PI/180);
         if (curAngleMode === RADIANS) ctx.rotate(a);
-    },
-
-    noise = (x, y = 0, z = 0) => {
-        if (perlin == null) {
-            perlin = new Array(PERLIN_SIZE + 1);
-            for (let i = 0; i < PERLIN_SIZE + 1; i++) {
-                perlin[i] = Math.random();
-            }
-        }
-    
-        if (x < 0) x = -x;
-        if (y < 0) y = -y;
-        if (z < 0) z = -z;
-    
-        let xi = floor(x),
-            yi = floor(y),
-            zi = floor(z);
-        let xf = x - xi;
-        let yf = y - yi;
-        let zf = z - zi;
-        let rxf, ryf;
-    
-        let r = 0;
-        let ampl = 0.5;
-    
-        let n1, n2, n3;
-    
-        for (let o = 0; o < perlin_octaves; o++) {
-            let of = xi + (yi << PERLIN_YWRAPB) + (zi << PERLIN_ZWRAPB);
-    
-            rxf = scaled_cosine(xf);
-            ryf = scaled_cosine(yf);
-    
-            n1 = perlin[of & PERLIN_SIZE];
-            n1 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n1);
-            n2 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
-            n2 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n2);
-            n1 += ryf * (n2 - n1);
-    
-            of += PERLIN_ZWRAP;
-            n2 = perlin[of & PERLIN_SIZE];
-            n2 += rxf * (perlin[(of + 1) & PERLIN_SIZE] - n2);
-            n3 = perlin[(of + PERLIN_YWRAP) & PERLIN_SIZE];
-            n3 += rxf * (perlin[(of + PERLIN_YWRAP + 1) & PERLIN_SIZE] - n3);
-            n2 += ryf * (n3 - n2);
-    
-            n1 += scaled_cosine(zf) * (n2 - n1);
-    
-            r += n1 * ampl;
-            ampl *= perlin_amp_falloff;
-            xi <<= 1;
-            xf *= 2;
-            yi <<= 1;
-            yf *= 2;
-            zi <<= 1;
-            zf *= 2;
-    
-            if (xf >= 1.0) {
-                xi++;
-                xf--;
-            }
-            if (yf >= 1.0) {
-                yi++;
-                yf--;
-            }
-            if (zf >= 1.0) {
-                zi++;
-                zf--;
-            }
-        }
-        return r;
-    },
-    
-    noiseDetail = (lod, falloff) => {
-        if (lod > 0) perlin_octaves = lod;
-        if (falloff > 0) perlin_amp_falloff = falloff;
-    },
-    
-    seedNoise = (seed) => {
-        const lcg = (() => {
-            const m = 4294967296;
-            const a = 1664525;
-            const c = 1013904223;
-            let seed, z;
-            return {
-                setSeed(val) {
-                    z = seed = (val == null ? Math.random() * m : val) >>> 0;
-                },
-                getSeed() {
-                    return seed;
-                },
-                rand() {
-                    z = (a * z + c) % m;
-                    return z / m;
-                }
-            };
-        })();
-    
-        lcg.setSeed(seed);
-        perlin = new Array(PERLIN_SIZE + 1);
-        for (let i = 0; i < PERLIN_SIZE + 1; i++) {
-            perlin[i] = lcg.rand();
-        }
-    },
+    },    
     
     loadPixels = () => {
         D.imageData.data.set(ctx.getImageData(0, 0, D.width, D.height).data);
@@ -1191,10 +1477,13 @@ var Drawlite = function (canvas, callback) {
     Object.assign(D, {
         canvas,
         Color,
+        PerlinNoise,
+        PRNG,
+        vec3,
         ctx,
         size,
         angleMode,
-        noloop,
+        noLoop,
         loop,
         frameRate,
         min,
@@ -1275,9 +1564,6 @@ var Drawlite = function (canvas, callback) {
         scale,
         translate,
         rotate,
-        noise,
-        noiseDetail,
-        seedNoise,
         loadPixels,
         updatePixels,
         colorMode,
