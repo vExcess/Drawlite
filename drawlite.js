@@ -1012,10 +1012,15 @@ var Drawlite = function (canvas, callback) {
                 h -= y;
                 break;
         }
+        if (typeof img.sourceImage === "object") {
+            img = img.sourceImage;
+        } else if (typeof img.canvas === "object") {
+            img = img.canvas;
+        }
         if (w === undef) {
-            ctx.drawImage(img.sourceImage, x, y);
+            ctx.drawImage(img, x, y);
         } else {
-            ctx.drawImage(img.sourceImage, x, y, w, h);
+            ctx.drawImage(img, x, y, w, h);
         }
     },
 
@@ -1606,7 +1611,7 @@ var Drawlite = function (canvas, callback) {
     };
     
     enableContextMenu(false);
-    autoUpdateDynamics(false);
+    autoUpdateDynamics();
     font(curFontName, curFontSize);
 
     function DrawliteUpdate () {
