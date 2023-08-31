@@ -1637,6 +1637,9 @@ var Drawlite = function (canvas, callback) {
     }
     
     drawIntervalId = setInterval(DrawliteUpdate, 1000 / targetFPS);
+
+    // make canvas focusable
+    canvas.setAttribute("tabindex", "-1");
     
     canvas.addEventListener("focus", () => {
         D.focused = true;
@@ -1665,16 +1668,12 @@ var Drawlite = function (canvas, callback) {
     });
     
     document.body.addEventListener("keydown", e => {
-        if (e.target.nodeName === "CANVAS") {
-            e.preventDefault();
-        }
+        if (e.target === canvas) e.preventDefault();
         D.keyIsPressed = true;
         if (D.keyPressed) D.keyPressed(e);
     });
     document.body.addEventListener("keyup", e => {
-        if (e.target.nodeName === "CANVAS") {
-            e.preventDefault();
-        }
+        if (e.target === canvas) e.preventDefault();
         D.keyIsPressed = false;
         if (D.keyReleased) D.keyReleased(e);
     });
