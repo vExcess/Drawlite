@@ -1665,11 +1665,16 @@ var Drawlite = function (canvas, callback) {
     });
     
     document.body.addEventListener("keydown", e => {
-        e.preventDefault();
+        if (e.target.nodeName === "CANVAS") {
+            e.preventDefault();
+        }
         D.keyIsPressed = true;
         if (D.keyPressed) D.keyPressed(e);
     });
     document.body.addEventListener("keyup", e => {
+        if (e.target.nodeName === "CANVAS") {
+            e.preventDefault();
+        }
         D.keyIsPressed = false;
         if (D.keyReleased) D.keyReleased(e);
     });
