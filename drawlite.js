@@ -829,7 +829,7 @@ var Drawlite = function (canvas, callback) {
     },
     
     splinePoint = (a, b, c, d, t) => (
-        0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t)
+        0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t**2 + (-a + 3 * b - 3 * c + d) * t**3)
     ),
     
     splineTangent = (a, b, c, d, t) => (
@@ -837,18 +837,19 @@ var Drawlite = function (canvas, callback) {
     ),
     
     lerpSpline = (pts, t) => {
-        t = t % (pts.length - 3);
-        let i = (t | 0);
-        t = t - i;
-        
-        if (i === -1) {
-            pts = [pts[i+1], pts[i+1], pts[i+2], pts[i+3]];
-        } else if (i >= pts.length - 3) {
-            pts = [pts[i], pts[i+1], pts[i+2], pts[i+2]];
-        } else {
+        const ptsLenMin3 = pts.length - 3;
+        t = t / (pts.length - 1) * ptsLenMin3;
+        let i = t | 0;
+        t -= i;
+
+        if (i < 0) {
+            pts = [pts[1], pts[1], pts[2], pts[3]];
+        } else if (i < ptsLenMin3) {
             pts = [pts[i], pts[i+1], pts[i+2], pts[i+3]];
+        } else {
+            pts = [pts[ptsLenMin3], pts[ptsLenMin3+1], pts[ptsLenMin3+2], pts[ptsLenMin3+2]];
         }
-        
+
         return [
             splinePoint(pts[0][0], pts[1][0], pts[2][0], pts[3][0], t),
             splinePoint(pts[0][1], pts[1][1], pts[2][1], pts[3][1], t)
